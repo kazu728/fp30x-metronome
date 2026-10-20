@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>FP-30X Metronome</title>
+<style>
+  :root {
+    --ebony: #191614;
+    --lift: #2a2623;
+    --edge: #3d3733;
+    --ivory: #efe8d8;
+    --ivory-dim: #a69f92;
+    --brass: #c9a34b;
+    --felt: #a3182c;
+    --engraved: "Noto Serif", Georgia, "Times New Roman", serif;
+  }
+  * { box-sizing: border-box; }
+  body { display: flex; flex-direction: column; min-height: 100dvh; margin: 0; background: var(--ebony); color: var(--ivory); font-family: system-ui, sans-serif; line-height: 1.5; -webkit-tap-highlight-color: transparent; }
+  header, main { width: 100%; max-width: 40rem; margin: 0 auto; padding-inline: 1.25rem; }
+  button { font: inherit; color: inherit; background: var(--lift); border: 1px solid var(--edge); cursor: pointer; }
+  button:disabled { opacity: 0.5; }
+  button:focus-visible, .options label:has(:focus-visible) { outline: 2px solid var(--brass); outline-offset: 3px; }
+  fieldset { min-width: 0; margin: 0; padding: 0; border: none; }
+  legend { padding: 0; margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--ivory-dim); }
+  legend output { margin-left: 0.5rem; color: var(--ivory); font-variant-numeric: tabular-nums; }
+  .options label { position: relative; cursor: pointer; }
+  .options input { position: absolute; opacity: 0; pointer-events: none; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3.5rem; padding-block: 0.5rem; }
+  #status { margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: var(--ivory-dim); }
+  #status::before { content: ""; flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%; border: 2px solid currentColor; }
+  [data-connection="connected"] #status::before { background: var(--brass); border-color: var(--brass); }
+  #status:empty { visibility: hidden; }
+  #connect { flex: none; padding: 0.5rem 1.1rem; border-radius: 999px; border-color: var(--brass); background: none; color: var(--brass); font-weight: 700; }
+
+  main { flex: 1; display: flex; flex-direction: column; justify-content: safe center; gap: 1.5rem; padding-bottom: 1.25rem; }
+
+  .tempo { display: grid; gap: 0.75rem; }
+  .readout { display: grid; grid-template-columns: 1fr auto 1fr; grid-template-areas: "less face more"; align-items: center; gap: 0.5rem; }
+  .step { justify-self: center; display: grid; place-items: center; width: 5.5rem; height: 5.5rem; padding: 0; border-radius: 50%; font-size: 1.625rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .step.less { grid-area: less; }
+  .step.more { grid-area: more; }
+  @media (max-width: 34rem) {
+    .readout { grid-template-columns: 1fr 1fr; grid-template-areas: "face face" "less more"; row-gap: 1rem; }
+  }
+
+  #toggle { grid-area: face; justify-self: center; display: grid; place-content: center; justify-items: center; width: clamp(12rem, 34vh, 16rem); aspect-ratio: 1; padding: 0; border: 3px solid var(--brass); border-radius: 50%; background: var(--lift); }
+  #toggle.running { border-color: var(--felt); background: var(--felt); }
+  .mark { display: block; font-family: var(--engraved); font-size: clamp(3.25rem, 8.5vh, 4.25rem); line-height: 1.05; white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
+  .note { width: 0.28em; height: 0.6em; fill: currentColor; }
+  .mark .equals { color: var(--ivory-dim); font-size: 0.6em; vertical-align: 0.2em; }
+  #term { display: block; min-height: 1.5em; font-family: var(--engraved); font-weight: 700; font-size: 1rem; color: var(--ivory-dim); }
+  .action { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.5rem; font-size: 1.125rem; font-weight: 700; color: var(--brass); }
+  .action::before { content: ""; border-left: 0.8em solid currentColor; border-block: 0.48em solid transparent; }
+  #toggle.running :is(.action, #term, .equals) { color: var(--ivory); }
+  #toggle.running .action::before { width: 0.7em; height: 0.7em; border: none; border-radius: 0.1em; background: currentColor; }
+
+  .ruler { display: flex; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 0.25rem; scrollbar-width: none; mask-image: linear-gradient(to right, transparent, #000 3rem, #000 calc(100% - 3rem), transparent); }
+  .ruler label { flex: none; min-width: 3.25rem; padding: 0.25rem 0.2rem 0.5rem; text-align: center; scroll-snap-align: center; font-family: var(--engraved); font-size: 1rem; font-variant-numeric: lining-nums; color: var(--ivory-dim); }
+  .ruler label::before { content: ""; display: block; width: 1px; height: 0.9rem; margin: 0.6rem auto 0.3rem; background: var(--edge); }
+  .ruler label:has(:checked) { color: var(--brass); font-weight: 700; }
+  .ruler label:has(:checked)::before { width: 3px; height: 1.5rem; margin-top: 0; background: var(--brass); }
+
+  .settings { display: grid; gap: 1.25rem; margin-top: 1.25rem; }
+
+  .signatures { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.4rem; }
+  .signatures label { display: grid; place-items: center; padding: 0.5rem 0; border: 1px solid var(--edge); border-radius: 0.875rem; background: var(--lift); font-family: var(--engraved); font-weight: 700; font-size: 1.375rem; line-height: 1; font-variant-numeric: lining-nums; }
+  .sig { display: grid; justify-items: center; gap: 0.05rem; }
+
+  .bars { display: flex; align-items: center; gap: 0.3rem; }
+  .bars .pill { margin-right: 0.4rem; }
+  .bar { flex: 1; display: flex; align-items: flex-end; height: 2.75rem; }
+  .level { width: 100%; height: calc(0.45rem + var(--level) * 0.2rem); border-radius: 0.2rem; background: var(--edge); }
+  .bar:has(:checked) .level, .bar:has(~ .bar :checked) .level { background: var(--brass); }
+
+  .pills { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .pill { padding: 0.45rem 0.95rem; border: 1px solid var(--edge); border-radius: 999px; font-size: 0.9375rem; color: var(--ivory-dim); }
+
+  .signatures label:has(:checked), .pill:has(:checked) { border-color: var(--brass); background: var(--brass); color: var(--ebony); font-weight: 700; }
+
+</style>
+</head>
+<body>
+<header>
+  <p id="status" role="status"></p>
+  <button id="connect">Connect to piano</button>
+</header>
+<main id="controls">
+  <section class="tempo" aria-label="Tempo">
+    <div class="readout">
+      <button class="step less" data-step="-1">−1</button>
+      <button id="toggle">
+        <span class="mark"><svg class="note" viewBox="0 0 10 21" aria-hidden="true"><ellipse cx="4.2" cy="17.4" rx="4" ry="2.9" transform="rotate(-22 4.2 17.4)"/><rect x="7" y="0" width="1.3" height="17"/></svg><span class="equals"> = </span><output id="bpm">--</output></span>
+        <span id="term"></span>
+        <span class="action" id="action">Start</span>
+      </button>
+      <button class="step more" data-step="1">+1</button>
+    </div>
+    <fieldset id="scale" aria-label="Choose a tempo from the scale">
+      <div class="options ruler"></div>
+    </fieldset>
+  </section>
+  <section class="settings">
+    <fieldset id="beat">
+      <legend>Time signature</legend>
+      <div class="options signatures"></div>
+    </fieldset>
+    <fieldset id="volume">
+      <legend>Volume<output id="volume-value">--</output></legend>
+      <div class="options bars"></div>
+    </fieldset>
+    <fieldset id="tone">
+      <legend>Sound</legend>
+      <div class="options pills"></div>
+    </fieldset>
+  </section>
+</main>
+<script type="module">
+const F0 = 0xf0;
+const F7 = 0xf7;
+const ROLAND = 0x41;
+const DEVICE_ID = 0x10;
+const MODEL_ID = [0x00, 0x00, 0x00, 0x28];
+const HEADER = [F0, ROLAND, DEVICE_ID, ...MODEL_ID];
+const RQ1 = 0x11;
+const DT1 = 0x12;
+
+const BLE_MIDI_SERVICE = "03b80e5a-ede8-4b33-a751-6ce34ec4c700";
+const BLE_MIDI_IO = "7772e5db-3868-4112-a1a9-f2669d106bf3";
+
+// Leave room for BLE headers and the timestamps around SysEx status bytes.
+const MIDI_BYTES_PER_PACKET = 15;
+
+function checksum(bytes) {
+  const sum = bytes.reduce((acc, b) => acc + b, 0);
+  return (128 - (sum % 128)) % 128;
+}
+
+function encode(value, size) {
+  return Array.from({ length: size }, (_, i) => (value >> (7 * (size - 1 - i))) & 0x7f);
+}
+
+function decode(data) {
+  return data.reduce((value, b) => value * 128 + b, 0);
+}
+
+function sysex(command, checked) {
+  return [...HEADER, command, ...checked, checksum(checked), F7];
+}
+
+function dt1(address, data) {
+  return sysex(DT1, [...address, ...data]);
+}
+
+function rq1(address, size) {
+  return sysex(RQ1, [...address, ...encode(size, 4)]);
+}
+
+function parseDt1(frame) {
+  const head = [...HEADER, DT1];
+  if (frame.length < head.length + 7 || head.some((b, i) => frame[i] !== b)) return null;
+  const checked = frame.slice(head.length, -2);
+  if (checksum(checked) !== frame.at(-2)) return null;
+  return { address: checked.slice(0, 4), data: checked.slice(4) };
+}
+
+function packetize(message, millis) {
+  const header = 0x80 | ((millis >> 7) & 0x3f);
+  const stamp = 0x80 | (millis & 0x7f);
+  const packets = [];
+  for (let i = 0; i < message.length; i += MIDI_BYTES_PER_PACKET) {
+    const chunk = message.slice(i, i + MIDI_BYTES_PER_PACKET);
+    packets.push(Uint8Array.from([header, ...chunk.flatMap((b) => (b & 0x80 ? [stamp, b] : [b]))]));
+  }
+  return packets;
+}
+
+function unframe(packet) {
+  const out = [];
+  let i = 1;
+  while (i < packet.length) {
+    if (packet[i] < 0x80) {
+      out.push(packet[i++]);
+      continue;
+    }
+    i++;
+    if (i < packet.length && packet[i] >= 0x80) out.push(packet[i++]);
+  }
+  return out;
+}
+
+class SysexReassembler {
+  #open = null;
+
+  push(bytes) {
+    const done = [];
+    for (const b of bytes) {
+      if (b === F0) {
+        this.#open = [F0];
+      } else if (b === F7) {
+        if (this.#open) done.push([...this.#open, F7]);
+        this.#open = null;
+      } else if (b >= 0xf8) {
+        // Real-time messages may interleave a SysEx without ending it.
+      } else if (b >= 0x80) {
+        this.#open = null;
+      } else {
+        this.#open?.push(b);
+      }
+    }
+    return done;
+  }
+}
+
+const $ = (id) => document.getElementById(id);
+const setStatus = (text) => ($("status").textContent = text);
+const steps = (from, to, by) => Array.from({ length: (to - from) / by + 1 }, (_, i) => from + i * by);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const MARKS = [...steps(40, 60, 2), 63, 66, 69, ...steps(72, 120, 4), 126, 132, 138, ...steps(144, 208, 8)];
+const TERMS = [[40, "Largo"], [60, "Larghetto"], [66, "Adagio"], [76, "Andante"], [108, "Moderato"], [120, "Allegro"], [168, "Presto"], [200, "Prestissimo"]];
+const POWER_ON_TEMPO = 108;
+const GROUPS = { scale: "sequencer_tempo", beat: "metronome_beat", volume: "metronome_volume", tone: "metronome_tone" };
+const SETTLE_MS = 150;
+const PACKET_GAP_MS = 50;
+// The piano can return stale values ~180 ms after a write (measured 2026-10-15).
+const VERIFY_GAP_MS = 100;
+const VERIFY_ATTEMPTS = 10;
+const REPLY_TIMEOUT_MS = 1000;
+const NO_REPLY = "The piano did not respond. Tap any control to try again.";
+
+// Over Bluetooth LE the piano answers RQ1 but ignores DT1 until it receives this handshake (measured once, 2026-10-15).
+// It has no read address, so unlike the parameters below it cannot be confirmed by reading it back.
+const CONNECTION = [0x01, 0x00, 0x03, 0x06];
+// Roland publishes no address map for the FP-30X. These addresses come from reverse engineering Roland Piano App 1.5.9
+// (aortegaCampanillas/RolandFP30xController@4492773), and each was confirmed on firmware 1C 01 00 00 on 2026-08-08
+// by reading it back after a write.
+const PARAMS = {
+  metronome_status: {
+    readAddress: [0x01, 0x00, 0x01, 0x0f],
+    writeAddress: [0x01, 0x00, 0x03, 0x1a],
+    size: 1,
+  },
+  sequencer_tempo: {
+    readAddress: [0x01, 0x00, 0x01, 0x08],
+    writeAddress: [0x01, 0x00, 0x03, 0x09],
+    size: 2,
+    range: { min: 10, max: 500 },
+  },
+  metronome_beat: {
+    readAddress: [0x01, 0x00, 0x02, 0x1f],
+    writeAddress: [0x01, 0x00, 0x02, 0x1f],
+    size: 1,
+    // BEAT_TABLE in RolandFP30xController's ui/tabs/metronome_tab.py@83d9ac8, which was checked by ear on an FP-30X
+    // (the project's docs disagree); 7/4 extends it to the manual's seventh choice. 3/4, 4/4 and 7/4 still need checking by ear.
+    labels: ["0/4", "2/4", "3/4", "4/4", "5/4", "6/4", "7/4"],
+  },
+  metronome_volume: {
+    readAddress: [0x01, 0x00, 0x02, 0x21],
+    writeAddress: [0x01, 0x00, 0x02, 0x21],
+    size: 1,
+    range: { min: 0, max: 10 },
+  },
+  metronome_tone: {
+    readAddress: [0x01, 0x00, 0x02, 0x22],
+    writeAddress: [0x01, 0x00, 0x02, 0x22],
+    size: 1,
+    labels: ["Click", "Electronic", "Voice (Japanese)", "Voice (English)"],
+  },
+};
+const NAMES = Object.keys(PARAMS);
+const byReadAddress = new Map(NAMES.map((name) => [String(PARAMS[name].readAddress), name]));
+const reassembler = new SysexReassembler();
+
+const state = {};
+// Serialize writes per parameter so late replies cannot be mistaken for newer values.
+const pending = new Map();
+const waiters = new Set();
+let device = null;
+let io = null;
+let connecting = null;
+let loading = null;
+let wakeLock = null;
+let sending = Promise.resolve();
+let lastPacket = 0;
+let centredTempo;
+
+function send(message) {
+  sending = sending
+    .then(async () => {
+      for (const packet of packetize(message, Math.floor(performance.now()))) {
+        const wait = lastPacket + PACKET_GAP_MS - performance.now();
+        if (wait > 0) await sleep(wait);
+        await io.writeValueWithoutResponse(packet);
+        lastPacket = performance.now();
+      }
+    })
+    .catch((err) => {
+      console.error(err);
+      if (io) setStatus("Could not send data to the piano. Try again.");
+    });
+  return sending;
+}
+
+async function read(name) {
+  const { readAddress, size } = PARAMS[name];
+  // Start the clock once the request has left the queue, which can hold several paced packets.
+  await send(rq1(readAddress, size));
+  return new Promise((resolve) => {
+    const waiter = {
+      name,
+      done(value) {
+        clearTimeout(timer);
+        waiters.delete(waiter);
+        resolve(value);
+      },
+    };
+    const timer = setTimeout(() => waiter.done(), REPLY_TIMEOUT_MS);
+    waiters.add(waiter);
+  });
+}
+
+function loaded() {
+  return NAMES.every((name) => state[name] !== undefined);
+}
+
+async function load() {
+  setStatus("Waiting for the piano to respond…");
+  await Promise.all(NAMES.filter((name) => state[name] === undefined).map(read));
+  if (io && !loaded()) setStatus(NO_REPLY);
+}
+
+function ask(name, value, delay = SETTLE_MS) {
+  state[name] = value;
+  render();
+  const entry = pending.get(name) ?? {};
+  pending.set(name, entry);
+  entry.want = value;
+  clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => {
+    entry.timer = null;
+    if (!entry.writing) commit(name, entry);
+  }, delay);
+}
+
+async function commit(name, entry) {
+  const { writeAddress, size } = PARAMS[name];
+  entry.writing = true;
+  let actual;
+  while (entry.want !== undefined && !entry.timer) {
+    const value = entry.want;
+    entry.want = undefined;
+    send(dt1(writeAddress, encode(value, size)));
+    actual = await verify(name, value);
+    if (pending.get(name) !== entry) return;
+    if (actual === undefined) break;
+  }
+  entry.writing = false;
+  // A newer value is still settling; its timer will commit it.
+  if (actual !== undefined && entry.want !== undefined) return;
+  clearTimeout(entry.timer);
+  pending.delete(name);
+  if (actual === undefined) {
+    delete state[name];
+    setStatus(NO_REPLY);
+  } else {
+    state[name] = actual;
+  }
+  render();
+}
+
+async function verify(name, value) {
+  let actual;
+  for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(VERIFY_GAP_MS);
+    actual = await read(name);
+    if (actual === value || actual === undefined) break;
+  }
+  return actual;
+}
+
+function nudge(name, delta) {
+  const { min, max } = PARAMS[name].range;
+  ask(name, Math.min(max, Math.max(min, state[name] + delta)));
+}
+
+async function act(operation) {
+  if (!io) await (connecting ??= connect().finally(() => (connecting = null)));
+  if (io && !loaded()) await (loading ??= load().finally(() => (loading = null)));
+  if (io && loaded()) operation();
+  else render();
+}
+
+function onNotification(event) {
+  const v = event.target.value;
+  for (const frame of reassembler.push(unframe(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)))) {
+    const reply = parseDt1(frame);
+    const name = reply && byReadAddress.get(String(reply.address));
+    if (!name || reply.data.length !== PARAMS[name].size) continue;
+    const value = decode(reply.data);
+    for (const waiter of waiters) if (waiter.name === name) waiter.done(value);
+    if (!pending.has(name)) {
+      state[name] = value;
+      render();
+    }
+    // Any reply shows the link works, which also clears an earlier send error.
+    if (loaded()) setStatus("Connected");
+  }
+}
+
+function term(bpm) {
+  if (bpm < MARKS[0] || bpm > MARKS.at(-1)) return "";
+  return TERMS.findLast(([from]) => bpm >= from)[1];
+}
+
+function check(id, value) {
+  for (const radio of $(id).querySelectorAll("input")) radio.checked = radio.value === String(value);
+}
+
+function centreRuler(bpm) {
+  const nearest = MARKS.reduce((best, mark) => (Math.abs(mark - bpm) < Math.abs(best - bpm) ? mark : best));
+  const label = $("scale").querySelectorAll("label")[MARKS.indexOf(nearest)];
+  label.scrollIntoView({ container: "nearest", block: "nearest", inline: "center" });
+}
+
+function render() {
+  const on = state.metronome_status === 1;
+  $("action").textContent = on ? "Stop" : "Start";
+  $("toggle").classList.toggle("running", on);
+  const bpm = state.sequencer_tempo;
+  $("bpm").value = bpm ?? "--";
+  $("term").textContent = bpm === undefined ? "" : term(bpm);
+  $("volume-value").value = state.metronome_volume ?? "--";
+  for (const [id, name] of Object.entries(GROUPS)) check(id, state[name]);
+  if (bpm !== undefined && bpm !== centredTempo) centreRuler(bpm);
+  centredTempo = bpm;
+}
+
+function addOptions(id, options) {
+  for (const { value, content, ariaLabel = null, className = "" } of options) {
+    const label = element("label", { className });
+    label.append(element("input", { type: "radio", name: id, value, ariaLabel }), content);
+    $(id).querySelector(".options").append(label);
+  }
+}
+
+function element(tag, props) {
+  return Object.assign(document.createElement(tag), props);
+}
+
+function signature(label) {
+  const sig = element("span", { className: "sig" });
+  sig.append(...label.split("/").map((n) => element("span", { textContent: n })));
+  return sig;
+}
+
+function levelBar(level) {
+  const bar = element("span", { className: "level" });
+  bar.style.setProperty("--level", level);
+  return bar;
+}
+
+function forget() {
+  for (const name of NAMES) delete state[name];
+  for (const { timer } of pending.values()) clearTimeout(timer);
+  pending.clear();
+  for (const waiter of waiters) waiter.done();
+  render();
+}
+
+async function keepAwake() {
+  if (!io || wakeLock || !("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => (wakeLock = null));
+  } catch (err) {
+    console.warn(err);
+  }
+}
+
+function onDisconnected() {
+  io = null;
+  wakeLock?.release();
+  forget();
+  document.body.dataset.connection = "none";
+  $("connect").hidden = false;
+  $("connect").textContent = "Reconnect to piano";
+  setStatus("Disconnected from the piano. Tap any control to reconnect.");
+}
+
+async function connect() {
+  $("connect").disabled = true;
+  try {
+    if (!device) {
+      device = await navigator.bluetooth.requestDevice({ filters: [{ services: [BLE_MIDI_SERVICE] }] });
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+    }
+    setStatus("Connecting…");
+    const service = await (await device.gatt.connect()).getPrimaryService(BLE_MIDI_SERVICE);
+    const characteristic = await service.getCharacteristic(BLE_MIDI_IO);
+    characteristic.addEventListener("characteristicvaluechanged", onNotification);
+    await characteristic.startNotifications();
+    io = characteristic;
+    document.body.dataset.connection = "connected";
+    $("connect").hidden = true;
+    send(dt1(CONNECTION, [1]));
+    keepAwake();
+  } catch (err) {
+    // Closing the device picker is not a connection failure.
+    if (err.name === "NotFoundError") {
+      setStatus("");
+      return;
+    }
+    console.error(err);
+    setStatus("Could not connect to the piano. Make sure it is turned on and try again.");
+  } finally {
+    $("connect").disabled = false;
+  }
+}
+
+const volume = PARAMS.metronome_volume.range;
+addOptions("scale", MARKS.map((mark) => ({ value: mark, content: String(mark) })));
+addOptions("beat", PARAMS.metronome_beat.labels.map((label, value) => ({ value, content: signature(label), ariaLabel: label })));
+addOptions("volume", steps(volume.min, volume.max, 1).map((level) => (level === 0
+  ? { value: 0, content: "Mute", className: "pill" }
+  : { value: level, content: levelBar(level), ariaLabel: `Volume ${level}`, className: "bar" })));
+addOptions("tone", PARAMS.metronome_tone.labels.map((label, value) => ({ value, content: label, className: "pill" })));
+centreRuler(POWER_ON_TEMPO);
+
+$("toggle").addEventListener("click", () => {
+  const value = state.metronome_status === 1 ? 0 : 1;
+  act(() => ask("metronome_status", value, 0));
+});
+for (const button of document.querySelectorAll("[data-step]")) {
+  button.addEventListener("click", () => act(() => nudge("sequencer_tempo", Number(button.dataset.step))));
+}
+for (const [id, name] of Object.entries(GROUPS)) {
+  $(id).addEventListener("change", (e) => act(() => ask(name, Number(e.target.value))));
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !io) return;
+  // The piano never reports changes made on its panel, so re-read everything when the page comes back.
+  NAMES.forEach(read);
+  keepAwake();
+});
+
+if (navigator.bluetooth) {
+  $("connect").addEventListener("click", () => act(() => {}));
+} else {
+  $("connect").disabled = true;
+  $("controls").inert = true;
+  setStatus("This browser does not support Bluetooth connections to the piano. Open this page in Chrome on Android.");
+}
+</script>
+</body>
+</html>
